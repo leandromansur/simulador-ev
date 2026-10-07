@@ -9,10 +9,6 @@ services:
     env_file:
       - path: .env
         required: false
-    environment:
-      CHARGE_POINT_ID: ${CHARGE_POINT_ID:-SIM-001}
-      CSMS_PASSWORD: ${CSMS_PASSWORD:-}
-      CSMS_URL: ${CSMS_URL:-wss://mobi-ocpp.inovative.cloud}
     # Permite host.docker.internal tambem em Docker Engine/Linux (no Docker Desktop ja existe)
     extra_hosts:
       - "host.docker.internal:host-gateway"

@@ -1,0 +1,21 @@
+name: inovative-simulador-ev-02
+
+services:
+  simulador-ev-02:
+    build: .
+    image: inovative-simulador-ev-ocpp16:0.1.0
+    container_name: inovative-simulador-ev-ocpp16-02
+    restart: unless-stopped
+    env_file:
+      - path: .env.simulator-02
+        required: false
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8086:8080"
+    networks:
+      - simulador-ev-net-02
+
+networks:
+  simulador-ev-net-02:
+    name: inovative-simulador-ev-net-02
