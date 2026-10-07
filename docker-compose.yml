@@ -1,0 +1,23 @@
+name: inovative-simulador-ev
+
+services:
+  simulador-ev:
+    build: .
+    image: inovative-simulador-ev-ocpp16:0.1.0
+    container_name: inovative-simulador-ev-ocpp16
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CHARGE_POINT_ID: ${CHARGE_POINT_ID:-SIM-001}
+      CSMS_URL: ${CSMS_URL:-ws://host.docker.internal:9000/ocpp}
+    # Permite host.docker.internal tambem em Docker Engine/Linux (no Docker Desktop ja existe)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - simulador-ev-net
+
+networks:
+  simulador-ev-net:
+    name: inovative-simulador-ev-net
