@@ -101,6 +101,8 @@ export interface OcppClientOptions {
   reconnectBaseMs: number;
   reconnectMaxMs: number;
   logger: Logger;
+  /** HTTP Basic no handshake (OCPP 1.6 security profile 1/2). */
+  basicAuth?: { user: string; password: string };
 }
 
 export class OcppClient implements Transport {
@@ -118,6 +120,13 @@ export class OcppClient implements Transport {
   private quickReconnect = false;
 
   constructor(private readonly opts: OcppClientOptions) {}
+
+  /** Troca URL/credenciais e reconecta na hora. */
+  setConnection(url: string, basicAuth?: { user: string; password: string }): void {
+    this.opts.url = url;
+    this.opts.basicAuth = basicAuth;
+    this.reconnect();
+  }
 
   start(): void {
     this.stopped = false;
@@ -137,7 +146,15 @@ export class OcppClient implements Transport {
 
   reconnect(): void {
     this.quickReconnect = true;
-    if (this.ws && this.ws.readyState <= WebSocket.OPEN) this.ws.close(1000);
+    if (this.ws && this.ws.readyState <= WebSocket.OPEN) {
+      this.ws.close(1000);
+    } else if (!this.ws && !this.stopped) {
+      // aguardando backoff: reconecta ja
+      if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+      this.attempt = 0;
+      this.connect();
+    }
   }
 
   call(action: string, payload: unknown): Promise<any> {
@@ -150,7 +167,15 @@ export class OcppClient implements Transport {
   private connect(): void {
     const { logger, url } = this.opts;
     logger.info(`CONNECTING ${redactUrl(url)} (subprotocol ${OCPP_SUBPROTOCOL})`);
-    const ws = new WebSocket(url, OCPP_SUBPROTOCOL, { handshakeTimeout: 15000 });
+    const { basicAuth } = this.opts;
+    const ws = new WebSocket(url, OCPP_SUBPROTOCOL, {
+      handshakeTimeout: 15000,
+      headers: basicAuth
+        ? {
+            Authorization: `Basic ${Buffer.from(`${basicAuth.user}:${basicAuth.password}`).toString('base64')}`,
+          }
+        : undefined,
+    });
     this.ws = ws;
 
     const calls = new CallManager(
@@ -177,7 +202,15 @@ export class OcppClient implements Transport {
 
     ws.on('message', (data) => void this.handleFrame(ws, calls, data.toString()));
 
-    ws.on('error', (err) => logger.error(`WebSocket erro: ${err.message || (err as NodeJS.ErrnoException).code || String(err)}`));
+    ws.on('error', (err) => {
+      const msg = err.message || (err as NodeJS.ErrnoException).code || String(err);
+      const hint = /401/.test(msg)
+        ? ' (CSMS recusou: defina CSMS_PASSWORD ou cadastre o CHARGE_POINT_ID no CSMS)'
+        : /426/.test(msg)
+          ? ' (CSMS exige subprotocolo ocpp1.6)'
+          : '';
+      logger.error(`WebSocket erro: ${msg}${hint}`);
+    });
 
     ws.on('close', (code) => {
       if (this.ws !== ws) return;

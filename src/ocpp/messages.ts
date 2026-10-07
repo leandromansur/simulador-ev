@@ -1,4 +1,4 @@
-import type { MeterValuesRequest, OcppErrorCode } from './types';
+import type { MeterValuesRequest, OcppErrorCode, SampledValue } from './types';
 
 export const MessageType = { CALL: 2, CALLRESULT: 3, CALLERROR: 4 } as const;
 
@@ -99,55 +99,49 @@ export interface MeterSample {
   currentA: number;
   voltageV: number;
   socPercent: number;
+  /** Measurands a enviar; padrao = os cinco basicos. */
+  measurands?: string[];
+  context?: string;
+  offeredPowerW?: number;
+  offeredCurrentA?: number;
+  powerFactor?: number;
+  frequencyHz?: number;
+  temperatureC?: number;
+}
+
+const DEFAULT_MEASURANDS = [
+  'Energy.Active.Import.Register',
+  'Power.Active.Import',
+  'Current.Import',
+  'Voltage',
+  'SoC',
+];
+
+/** Amostras (SampledValue) para os measurands pedidos, com unidades do OCPP 1.6. */
+export function buildSampledValues(s: MeterSample): SampledValue[] {
+  const base = { context: s.context ?? 'Sample.Periodic', format: 'Raw' };
+  const outlet = { ...base, location: 'Outlet' };
+  const table: Record<string, SampledValue> = {
+    'Energy.Active.Import.Register': { ...outlet, value: String(Math.round(s.energyWh)), measurand: 'Energy.Active.Import.Register', unit: 'Wh' },
+    'Power.Active.Import': { ...outlet, value: String(Math.round(s.powerW)), measurand: 'Power.Active.Import', unit: 'W' },
+    'Current.Import': { ...outlet, value: s.currentA.toFixed(2), measurand: 'Current.Import', unit: 'A' },
+    'Current.Offered': { ...outlet, value: (s.offeredCurrentA ?? 0).toFixed(2), measurand: 'Current.Offered', unit: 'A' },
+    'Power.Offered': { ...outlet, value: String(Math.round(s.offeredPowerW ?? 0)), measurand: 'Power.Offered', unit: 'W' },
+    Voltage: { ...outlet, value: s.voltageV.toFixed(1), measurand: 'Voltage', unit: 'V' },
+    Frequency: { ...outlet, value: (s.frequencyHz ?? 60).toFixed(2), measurand: 'Frequency' },
+    'Power.Factor': { ...outlet, value: (s.powerFactor ?? 1).toFixed(2), measurand: 'Power.Factor' },
+    Temperature: { ...outlet, value: (s.temperatureC ?? 30).toFixed(1), measurand: 'Temperature', unit: 'Celsius' },
+    SoC: { ...base, value: s.socPercent.toFixed(1), measurand: 'SoC', location: 'EV', unit: 'Percent' },
+  };
+  const wanted = s.measurands && s.measurands.length > 0 ? s.measurands : DEFAULT_MEASURANDS;
+  return wanted.filter((m) => m in table).map((m) => table[m]);
 }
 
 /** Monta o payload de MeterValues com os measurands e unidades do OCPP 1.6. */
 export function buildMeterValuesPayload(s: MeterSample): MeterValuesRequest {
-  const base = { context: 'Sample.Periodic', format: 'Raw' };
   return {
     connectorId: s.connectorId,
     ...(s.transactionId !== undefined ? { transactionId: s.transactionId } : {}),
-    meterValue: [
-      {
-        timestamp: s.timestamp.toISOString(),
-        sampledValue: [
-          {
-            ...base,
-            value: String(Math.round(s.energyWh)),
-            measurand: 'Energy.Active.Import.Register',
-            location: 'Outlet',
-            unit: 'Wh',
-          },
-          {
-            ...base,
-            value: String(Math.round(s.powerW)),
-            measurand: 'Power.Active.Import',
-            location: 'Outlet',
-            unit: 'W',
-          },
-          {
-            ...base,
-            value: s.currentA.toFixed(2),
-            measurand: 'Current.Import',
-            location: 'Outlet',
-            unit: 'A',
-          },
-          {
-            ...base,
-            value: s.voltageV.toFixed(1),
-            measurand: 'Voltage',
-            location: 'Outlet',
-            unit: 'V',
-          },
-          {
-            ...base,
-            value: s.socPercent.toFixed(1),
-            measurand: 'SoC',
-            location: 'EV',
-            unit: 'Percent',
-          },
-        ],
-      },
-    ],
+    meterValue: [{ timestamp: s.timestamp.toISOString(), sampledValue: buildSampledValues(s) }],
   };
 }

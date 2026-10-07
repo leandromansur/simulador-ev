@@ -56,4 +56,28 @@ describe('interface web', () => {
     expect((await post('/api/reset', { type: 'X' })).status).toBe(400);
     expect((await post('/api/stop', {}, {})).status).toBe(403);
   });
+
+  it('API estendida: chamada manual, config, falha, pausa e atalhos', async () => {
+    const { base, post, cp, transport } = await boot();
+    const call = await (await post('/api/call', { action: 'DataTransfer', payload: { vendorId: 'X' } })).json();
+    expect(call.ok).toBe(true);
+    expect(transport.last('DataTransfer')!.payload).toEqual({ vendorId: 'X' });
+    expect((await post('/api/call', { action: 'bad action!' })).status).toBe(400);
+
+    expect((await post('/api/config', { key: 'ConnectionTimeOut', value: '99' })).status).toBe(200);
+    expect((await (await post('/api/config', { key: 'NumberOfConnectors', value: '9' })).json()).ok).toBe(false);
+    expect((await post('/api/config', { key: 'NumberOfConnectors', value: '2', force: true })).status).toBe(200);
+    expect(cp.config.get('NumberOfConnectors')).toBe('2');
+
+    await post('/api/start', { idTag: 'W' });
+    expect((await post('/api/suspend', { by: 'EV' })).status).toBe(200);
+    expect((await post('/api/resume')).status).toBe(200);
+    expect((await post('/api/fault', { errorCode: 'OverVoltage', faulted: true })).status).toBe(200);
+    const s = await (await fetch(base + '/api/state')).json();
+    expect(s).toMatchObject({ status: 'Faulted', errorCode: 'OverVoltage' });
+    expect((await post('/api/fault', { errorCode: 'NoError' })).status).toBe(200);
+    expect((await post('/api/availability', { type: 'Inoperative' })).status).toBe(200);
+    expect(cp.connector.status).toBe('Unavailable');
+  });
 });
+

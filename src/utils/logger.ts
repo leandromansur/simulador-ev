@@ -27,13 +27,13 @@ const defaultSink: Sink = (line, level) => {
   (level === 'error' ? console.error : console.log)(line);
 };
 
-const BUFFER_SIZE = 300;
+const BUFFER_SIZE = 1000;
 
 export class Logger {
   private readonly buffer: string[] = [];
 
   constructor(
-    private readonly chargePointId: string,
+    public chargePointId: string,
     private level: LogLevel = 'info',
     private readonly sink: Sink = defaultSink,
   ) {}

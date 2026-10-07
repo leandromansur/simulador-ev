@@ -48,6 +48,7 @@ cp .env.example .env      # ajuste CSMS_URL, CHARGE_POINT_ID etc. (.env não é 
 |---|---|---|
 | `CHARGE_POINT_ID` | — (obrigatória) | Identidade do Charge Point |
 | `CSMS_URL` | — (obrigatória) | `ws://` ou `wss://` |
+| `CSMS_PASSWORD` | vazio | Senha HTTP Basic (usuário = `CHARGE_POINT_ID`); vazio = sem autenticação |
 | `APPEND_CHARGE_POINT_ID_TO_URL` | `true` | `true`: URL final = `CSMS_URL/CHARGE_POINT_ID` |
 | `CONNECTOR_ID` | `1` | Conector simulado |
 | `ID_TAG` | `SIMULATOR001` | idTag das sessões locais |
@@ -112,6 +113,7 @@ Recursos criados: container `inovative-simulador-ev-ocpp16`, imagem `inovative-s
 
 - CSMS no Windows host: `CSMS_URL=ws://host.docker.internal:9000/ocpp`
 - CSMS remoto: `CSMS_URL=wss://ocpp.exemplo.com/ocpp`
+- **CSMS Inovative (DEV)**: `CSMS_URL=wss://mobi-ocpp.inovative.cloud` (sem `/ocpp`: o gateway usa o 1º segmento do path como identidade do carregador) e `CSMS_PASSWORD` se o ID estiver em `OCPP_DEVICE_CREDENTIALS_JSON`. O gateway atual não implementa `Authorize` nem `MeterValues` (`NotSupported`); o simulador segue para `StartTransaction` e desativa o envio de MeterValues até reconectar.
 - URL sem ID no final: `APPEND_CHARGE_POINT_ID_TO_URL=false`
 
 ## 16. Mensagens implementadas
@@ -167,3 +169,20 @@ Somente AC e um conector; potência constante (sem curva de carga); sem Smart Ch
 - **v0.4** Smart Charging (SetChargingProfile, ClearChargingProfile, GetCompositeSchedule)
 - **v0.5** cenários automatizados; carga de testes com dezenas/centenas de Charge Points virtuais
 - **Futuro** OCPP 2.0.1
+
+## Simulador completo (OCPP 1.6J)
+
+**CSMS → Charge Point (todas as mensagens do Core + perfis opcionais):** RemoteStartTransaction (com `chargingProfile` e `AuthorizeRemoteTxRequests`), RemoteStopTransaction, Reset, ChangeAvailability (com `Scheduled`), ChangeConfiguration, GetConfiguration, ClearCache, TriggerMessage, UnlockConnector, DataTransfer, GetLocalListVersion, SendLocalList, ReserveNow, CancelReservation, SetChargingProfile, ClearChargingProfile, GetCompositeSchedule, GetDiagnostics, UpdateFirmware.
+
+**Charge Point → CSMS:** BootNotification, Heartbeat, Authorize, StartTransaction (com `reservationId`), StopTransaction (com `transactionData` via `StopTxnSampledData`), MeterValues (measurands por `MeterValuesSampledData`/`MeterValuesAlignedData`, `ClockAlignedDataInterval`), StatusNotification (com `errorCode`, `info`, `vendorErrorCode`), DataTransfer, DiagnosticsStatusNotification, FirmwareStatusNotification.
+
+**Interface web (`http://localhost:8085`)** — abas:
+- **Painel**: sessão, parar com `reason`, pausar (SuspendedEV/EVSE), retomar, reset.
+- **Simulação**: potência, tensão, fases, fator de potência, bateria, SOC, identidade do Boot, injeção de erros/Faulted, disponibilidade local e comportamentos de falha (firmware, diagnóstico, unlock).
+- **Mensagens**: envio manual de qualquer CALL (atalhos para as mensagens comuns e editor JSON livre com a resposta do CSMS).
+- **Config OCPP**: todas as chaves (edição como o CSMS faria, ou "modo local" que ignora somente-leitura).
+- **Reservas / Perfis / Listas**: estado de reserva, perfis de carga instalados, Local Auth List e cache.
+- **Conexão**: troca ChargePointId, URL e senha Basic em tempo de execução, sem reiniciar.
+- **Logs**: filtro, DEBUG (payloads) e cópia.
+
+Limitação: um único conector (`CONNECTOR_ID`); não há OCPP 2.x nem perfis de segurança 3 (certificado de cliente).

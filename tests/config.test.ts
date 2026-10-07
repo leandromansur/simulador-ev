@@ -11,6 +11,11 @@ describe('config', () => {
     expect(c.autoStartTransaction).toBe(false);
   });
 
+  it('le CSMS_PASSWORD opcional', () => {
+    expect(loadConfig(base).csmsPassword).toBe('');
+    expect(loadConfig({ ...base, CSMS_PASSWORD: ' s3 ' }).csmsPassword).toBe('s3');
+  });
+
   it('exige CHARGE_POINT_ID e CSMS_URL', () => {
     expect(() => loadConfig({})).toThrow(ConfigError);
   });

@@ -3,7 +3,7 @@ import { Battery } from './battery';
 const EPSILON_KWH = 1e-9;
 
 export class Vehicle {
-  readonly battery: Battery;
+  battery: Battery;
   private plugged = false;
 
   constructor(
@@ -29,6 +29,11 @@ export class Vehicle {
   plugIn(): void {
     this.battery.reset(this.initialSoc);
     this.plugged = true;
+  }
+
+  /** Troca a bateria (nova capacidade) mantendo o SOC inicial. */
+  setCapacity(capacityKwh: number): void {
+    this.battery = new Battery(capacityKwh, this.initialSoc);
   }
 
   unplug(): void {

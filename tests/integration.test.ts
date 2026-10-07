@@ -12,6 +12,8 @@ function startMockCsms() {
   const received: Array<{ action: string; payload: any }> = [];
   const sockets: WebSocket[] = [];
   const protocols: string[] = [];
+  const authHeaders: Array<string | undefined> = [];
+  const replies = new Map<string, (payload: any) => void>();
   const wss = new WebSocketServer({
     port: 0,
     handleProtocols: (set) => {
@@ -19,10 +21,13 @@ function startMockCsms() {
       return set.has('ocpp1.6') ? 'ocpp1.6' : false;
     },
   });
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
     sockets.push(ws);
+    authHeaders.push(req.headers.authorization);
     ws.on('message', (raw) => {
       const [type, id, action, payload] = JSON.parse(raw.toString());
+      if (type === 3) return void replies.get(id)?.(action);
+      if (type === 4) return void replies.get(id)?.({ error: action });
       if (type !== 2) return;
       received.push({ action, payload });
       const reply: Record<string, unknown> = {
@@ -33,7 +38,14 @@ function startMockCsms() {
       ws.send(JSON.stringify([3, id, reply[action] ?? {}]));
     });
   });
-  return { wss, received, sockets, protocols, port: () => (wss.address() as AddressInfo).port };
+  /** CSMS -> Charge Point: envia um CALL e devolve o payload do CALLRESULT. */
+  const sendCall = (action: string, payload: unknown) =>
+    new Promise<any>((resolve) => {
+      const id = 'srv-' + Math.random().toString(36).slice(2);
+      replies.set(id, resolve);
+      sockets[sockets.length - 1].send(JSON.stringify([2, id, action, payload]));
+    });
+  return { wss, received, sockets, protocols, authHeaders, sendCall, port: () => (wss.address() as AddressInfo).port };
 }
 
 const until = async (cond: () => boolean, ms = 5000) => {
@@ -102,5 +114,45 @@ describe('integracao WebSocket (CSMS simulado em processo)', () => {
     cleanup.push(() => client.stop());
     client.start();
     await until(() => disconnects >= 3);
+  });
+
+  it('envia Basic Auth e atende comandos do CSMS pelo WebSocket real', async () => {
+    const csms = startMockCsms();
+    const logger = new Logger('SIM-001', 'error');
+    const client = new OcppClient({
+      url: `ws://127.0.0.1:${csms.port()}/SIM-001`,
+      callTimeoutMs: 5000,
+      reconnectBaseMs: 100,
+      reconnectMaxMs: 200,
+      logger,
+      basicAuth: { user: 'SIM-001', password: 's3' },
+    });
+    const cp = new ChargePoint(testConfig(), client, logger);
+    client.onConnected = () => cp.onConnected();
+    client.onDisconnected = () => cp.onDisconnected();
+    client.onCall = createCallHandler(cp);
+    cleanup.push(() => {
+      void cp.shutdown();
+      client.stop();
+      csms.wss.close();
+    });
+    client.start();
+    await until(() => csms.received.some((m) => m.action === 'StatusNotification'));
+    expect(csms.authHeaders[0]).toBe('Basic ' + Buffer.from('SIM-001:s3').toString('base64'));
+
+    const cfg: any = await csms.sendCall('GetConfiguration', { key: ['HeartbeatInterval'] });
+    expect(cfg.configurationKey[0].key).toBe('HeartbeatInterval');
+    expect(await csms.sendCall('ChangeConfiguration', { key: 'ConnectionTimeOut', value: '90' })).toEqual({
+      status: 'Accepted',
+    });
+    expect(await csms.sendCall('ChangeAvailability', { connectorId: 1, type: 'Inoperative' })).toEqual({
+      status: 'Accepted',
+    });
+    expect(cp.connector.status).toBe('Unavailable');
+    expect(await csms.sendCall('TriggerMessage', { requestedMessage: 'Heartbeat' })).toEqual({
+      status: 'Accepted',
+    });
+    await until(() => csms.received.some((m) => m.action === 'Heartbeat'));
+    expect(await csms.sendCall('Foo', {})).toEqual({ error: 'NotImplemented' });
   });
 });

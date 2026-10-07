@@ -3,6 +3,8 @@ import type { LogLevel } from './utils/logger';
 export interface Config {
   chargePointId: string;
   csmsUrl: string;
+  /** Senha HTTP Basic (usuario = chargePointId); vazio = sem autenticacao. */
+  csmsPassword: string;
   appendChargePointId: boolean;
   connectorId: number;
   idTag: string;
@@ -113,6 +115,7 @@ export function loadConfig(env: Env = process.env): Config {
   const config: Config = {
     chargePointId,
     csmsUrl,
+    csmsPassword: env.CSMS_PASSWORD?.trim() ?? '',
     appendChargePointId: bool('APPEND_CHARGE_POINT_ID_TO_URL', true),
     connectorId: num('CONNECTOR_ID', 1, 1),
     idTag: str('ID_TAG', 'SIMULATOR001'),

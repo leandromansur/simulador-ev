@@ -4,6 +4,7 @@ export type ConnectorStatus =
   | 'Charging'
   | 'SuspendedEV'
   | 'SuspendedEVSE'
+  | 'Reserved'
   | 'Finishing'
   | 'Unavailable'
   | 'Faulted';
@@ -70,6 +71,7 @@ export interface AuthorizeResponse {
   idTagInfo: IdTagInfo;
 }
 export interface StartTransactionRequest {
+  reservationId?: number;
   connectorId: number;
   idTag: string;
   meterStart: number;
@@ -80,6 +82,7 @@ export interface StartTransactionResponse {
   idTagInfo: IdTagInfo;
 }
 export interface StopTransactionRequest {
+  transactionData?: Array<{ timestamp: string; sampledValue: SampledValue[] }>;
   transactionId: number;
   meterStop: number;
   timestamp: string;

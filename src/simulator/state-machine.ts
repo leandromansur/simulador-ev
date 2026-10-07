@@ -1,9 +1,10 @@
 import type { ConnectorStatus } from '../ocpp/types';
 
-/** Transicoes permitidas (baseadas na tabela de estados do OCPP 1.6, sem Reserved). */
+/** Transicoes permitidas (baseadas na tabela de estados do OCPP 1.6, com Reserved). */
 export const TRANSITIONS: Record<ConnectorStatus, readonly ConnectorStatus[]> = {
-  Available: ['Preparing', 'Unavailable', 'Faulted'],
-  Preparing: ['Charging', 'SuspendedEV', 'SuspendedEVSE', 'Available', 'Unavailable', 'Faulted'],
+  Available: ['Preparing', 'Reserved', 'Unavailable', 'Faulted'],
+  Reserved: ['Preparing', 'Available', 'Unavailable', 'Faulted'],
+  Preparing: ['Charging', 'SuspendedEV', 'SuspendedEVSE', 'Available', 'Reserved', 'Unavailable', 'Faulted'],
   Charging: ['SuspendedEV', 'SuspendedEVSE', 'Finishing', 'Available', 'Unavailable', 'Faulted'],
   SuspendedEV: ['Charging', 'SuspendedEVSE', 'Finishing', 'Available', 'Unavailable', 'Faulted'],
   SuspendedEVSE: ['Charging', 'SuspendedEV', 'Finishing', 'Available', 'Unavailable', 'Faulted'],

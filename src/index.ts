@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   }
 
   const logger = new Logger(config.chargePointId, config.logLevel);
-  const url = buildCsmsUrl(config.csmsUrl, config.chargePointId, config.appendChargePointId);
+  let url = buildCsmsUrl(config.csmsUrl, config.chargePointId, config.appendChargePointId);
 
   const client = new OcppClient({
     url,
@@ -26,6 +26,9 @@ async function main(): Promise<void> {
     reconnectBaseMs: config.reconnectIntervalSeconds * 1000,
     reconnectMaxMs: config.reconnectMaxIntervalSeconds * 1000,
     logger,
+    basicAuth: config.csmsPassword
+      ? { user: config.chargePointId, password: config.csmsPassword }
+      : undefined,
   });
   const chargePoint = new ChargePoint(config, client, logger);
 
@@ -42,7 +45,36 @@ async function main(): Promise<void> {
 
   const webServer =
     config.webPort > 0
-      ? startWebServer({ port: config.webPort, host: config.webHost, chargePoint, logger, csmsUrl: url })
+      ? startWebServer({
+          port: config.webPort,
+          host: config.webHost,
+          chargePoint,
+          logger,
+          csmsUrl: () => url,
+          reconfigure: (c) => {
+            if (typeof c.chargePointId === 'string' && c.chargePointId.trim()) {
+              config.chargePointId = c.chargePointId.trim();
+              logger.chargePointId = config.chargePointId;
+            }
+            if (typeof c.csmsUrl === 'string' && c.csmsUrl.trim()) {
+              if (!/^wss?:\/\/[^\s/]+/i.test(c.csmsUrl.trim())) {
+                throw new RangeError('CSMS_URL deve comecar com ws:// ou wss://');
+              }
+              config.csmsUrl = c.csmsUrl.trim();
+            }
+            if (typeof c.password === 'string') config.csmsPassword = c.password;
+            if (typeof c.append === 'boolean') config.appendChargePointId = c.append;
+            url = buildCsmsUrl(config.csmsUrl, config.chargePointId, config.appendChargePointId);
+            logger.info(`Conexao reconfigurada: ${url}`);
+            client.setConnection(
+              url,
+              config.csmsPassword
+                ? { user: config.chargePointId, password: config.csmsPassword }
+                : undefined,
+            );
+            return url;
+          },
+        })
       : null;
 
   let shuttingDown = false;

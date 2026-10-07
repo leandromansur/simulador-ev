@@ -8,10 +8,17 @@ export interface WebServerOptions {
   host: string;
   chargePoint: ChargePoint;
   logger: Logger;
-  csmsUrl: string;
+  csmsUrl: string | (() => string);
+  /** Troca ChargePointId/URL/senha em tempo de execucao; devolve a URL final. */
+  reconfigure?: (c: {
+    chargePointId?: string;
+    csmsUrl?: string;
+    password?: string;
+    append?: boolean;
+  }) => string;
 }
 
-const MAX_BODY = 10_000;
+const MAX_BODY = 200_000;
 
 function send(res: http.ServerResponse, status: number, body: unknown, type = 'application/json') {
   res.writeHead(status, {
@@ -54,10 +61,12 @@ export function createWebServer(opts: WebServerOptions): http.Server {
         return send(res, 200, PAGE_HTML, 'text/html');
       }
       if (req.method === 'GET' && url.pathname === '/api/state') {
-        return send(res, 200, { ...cp.snapshot(), csmsUrl: opts.csmsUrl });
+        const csmsUrl = typeof opts.csmsUrl === 'function' ? opts.csmsUrl() : opts.csmsUrl;
+        return send(res, 200, { ...cp.snapshot(), csmsUrl });
       }
       if (req.method === 'GET' && url.pathname === '/api/logs') {
-        return send(res, 200, { lines: logger.recent(150) });
+        const n = Math.min(1000, Math.max(1, Number(url.searchParams.get('n')) || 300));
+        return send(res, 200, { lines: logger.recent(n) });
       }
       if (req.method === 'POST' && url.pathname.startsWith('/api/')) {
         // Cabecalho customizado forca preflight CORS e bloqueia CSRF de outros sites.
@@ -74,7 +83,8 @@ export function createWebServer(opts: WebServerOptions): http.Server {
           case '/api/stop': {
             const tx = cp.connector.transaction;
             if (!tx) return send(res, 409, { ok: false, error: 'Nenhuma transacao ativa' });
-            await cp.stopTransaction('Local');
+            const reasons = ['Local', 'EmergencyStop', 'PowerLoss', 'Other', 'DeAuthorized', 'Reboot'];
+            await cp.stopTransaction(reasons.includes(body.reason) ? body.reason : 'Local');
             return send(res, 200, { ok: true });
           }
           case '/api/unplug': {
@@ -91,7 +101,94 @@ export function createWebServer(opts: WebServerOptions): http.Server {
               maxPowerKw: num(body.maxPowerKw),
               initialSoc: num(body.initialSoc),
               targetSoc: num(body.targetSoc),
+              voltage: num(body.voltage),
+              phases: num(body.phases),
+              powerFactor: num(body.powerFactor),
+              batteryKwh: num(body.batteryKwh),
+              idTag: body.idTag,
+              vendor: body.vendor,
+              model: body.model,
+              serialNumber: body.serialNumber,
+              firmwareVersion: body.firmwareVersion,
             });
+            const meterInterval = num(body.meterInterval);
+            if (meterInterval !== undefined) {
+              cp.config.force('MeterValueSampleInterval', String(Math.max(0, Math.floor(meterInterval))));
+            }
+            return send(res, 200, { ok: true });
+          }
+          case '/api/call': {
+            if (typeof body.action !== 'string' || !/^[A-Za-z]{3,40}$/.test(body.action)) {
+              throw new RangeError('action invalida');
+            }
+            try {
+              const response = await cp.rawCall(body.action, body.payload ?? {});
+              return send(res, 200, { ok: true, response });
+            } catch (err) {
+              return send(res, 200, { ok: false, error: (err as Error).message });
+            }
+          }
+          case '/api/suspend': {
+            const ok = cp.suspend(body.by === 'EVSE' ? 'EVSE' : 'EV');
+            return send(res, ok ? 200 : 409, { ok, error: ok ? undefined : 'So e possivel pausar durante a carga' });
+          }
+          case '/api/resume': {
+            const ok = cp.resume();
+            return send(res, ok ? 200 : 409, { ok, error: ok ? undefined : 'Carga nao esta pausada' });
+          }
+          case '/api/fault': {
+            await cp.setFault({
+              errorCode: body.errorCode,
+              faulted: body.faulted !== false,
+              info: body.info,
+              vendorErrorCode: body.vendorErrorCode,
+            });
+            return send(res, 200, { ok: true });
+          }
+          case '/api/availability': {
+            const r = cp.changeAvailability({
+              connectorId: body.connectorId === 0 ? 0 : cp.connector.id,
+              type: body.type,
+            });
+            return send(res, 200, { ok: r.status !== 'Rejected', status: r.status });
+          }
+          case '/api/config': {
+            if (typeof body.key !== 'string' || typeof body.value !== 'string') {
+              throw new RangeError('key e value sao obrigatorios');
+            }
+            if (body.force) {
+              cp.config.force(body.key, body.value);
+              return send(res, 200, { ok: true });
+            }
+            const status = cp.config.change(body.key, body.value);
+            return send(res, 200, {
+              ok: status === 'Accepted' || status === 'RebootRequired',
+              error: status === 'Accepted' ? undefined : status,
+            });
+          }
+          case '/api/behavior': {
+            for (const k of ['firmwareFails', 'diagnosticsFails', 'unlockFails'] as const) {
+              if (typeof body[k] === 'boolean') cp.behavior[k] = body[k];
+            }
+            return send(res, 200, { ok: true });
+          }
+          case '/api/connection': {
+            if (!opts.reconfigure) return send(res, 501, { ok: false, error: 'indisponivel' });
+            const finalUrl = opts.reconfigure({
+              chargePointId: body.chargePointId,
+              csmsUrl: body.csmsUrl,
+              password: body.password,
+              append: body.append,
+            });
+            return send(res, 200, { ok: true, url: finalUrl });
+          }
+          case '/api/local-state': {
+            // atalhos locais (limpar cache/perfis/reserva)
+            if (body.clear === 'cache') cp.authCache.clear();
+            if (body.clear === 'profiles') cp.profiles.clear({});
+            if (body.clear === 'reservation' && cp.reservation) {
+              cp.cancelReservation({ reservationId: cp.reservation.reservationId });
+            }
             return send(res, 200, { ok: true });
           }
         }

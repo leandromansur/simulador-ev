@@ -92,6 +92,24 @@ describe('sessao local', () => {
     expect(cp.connector.status).toBe('Available');
   });
 
+  it('segue para StartTransaction quando o CSMS nao suporta Authorize', async () => {
+    const { cp, transport } = await makeRig();
+    transport.unsupported.add('Authorize');
+    expect(await cp.startLocalSession()).toBe(true);
+    expect(cp.connector.status).toBe('Charging');
+    expect(transport.actions()).toContain('StartTransaction');
+  });
+
+  it('desativa MeterValues sem derrubar a sessao quando o CSMS nao suporta', async () => {
+    const { cp, transport } = await makeRig();
+    transport.unsupported.add('MeterValues');
+    await cp.startLocalSession();
+    await vi.advanceTimersByTimeAsync(30_000);
+    await cp.settled();
+    expect(cp.connector.status).toBe('Charging');
+    expect(transport.actions().filter((a) => a === 'MeterValues')).toHaveLength(1);
+  });
+
   it('nao cria transacoes simultaneas', async () => {
     const { cp, transport } = await makeRig();
     const [a, b] = await Promise.all([cp.startLocalSession(), cp.startLocalSession()]);
@@ -214,7 +232,7 @@ describe('roteador de CALLs', () => {
     await expect(handle('RemoteStartTransaction', { idTag: 'T' })).resolves.toEqual({
       status: 'Accepted',
     });
-    await expect(handle('GetConfiguration', {})).rejects.toMatchObject({ code: 'NotImplemented' });
+    await expect(handle('FooBar', {})).rejects.toMatchObject({ code: 'NotImplemented' });
     await cp.settled();
   });
 });

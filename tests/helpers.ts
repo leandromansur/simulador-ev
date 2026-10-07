@@ -1,3 +1,4 @@
+import { OcppCallError } from '../src/ocpp/messages';
 import type { Config } from '../src/config';
 import type { Transport } from '../src/ocpp/client';
 import { ChargePoint } from '../src/simulator/charger';
@@ -7,6 +8,7 @@ export function testConfig(over: Partial<Config> = {}): Config {
   return {
     chargePointId: 'SIM-001',
     csmsUrl: 'ws://localhost:9000/ocpp',
+    csmsPassword: '',
     appendChargePointId: true,
     connectorId: 1,
     idTag: 'SIMULATOR001',
@@ -50,10 +52,13 @@ export class FakeTransport implements Transport {
   startStatus = 'Accepted';
   bootStatus = 'Accepted';
   bootInterval = 300;
+  /** Actions respondidas com CALLERROR NotSupported (como o CSMS Inovative). */
+  unsupported = new Set<string>();
 
   async call(action: string, payload: unknown): Promise<any> {
     if (!this.connected) throw new Error('offline');
     this.calls.push({ action, payload });
+    if (this.unsupported.has(action)) throw new OcppCallError('NotSupported', `Action not supported: ${action}`);
     switch (action) {
       case 'BootNotification':
         return {
