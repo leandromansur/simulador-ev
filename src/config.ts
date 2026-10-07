@@ -26,6 +26,9 @@ export interface Config {
   logLevel: LogLevel;
   autoStartTransaction: boolean;
   autoStartDelaySeconds: number;
+  /** 0 desativa a interface web. */
+  webPort: number;
+  webHost: string;
 }
 
 export class ConfigError extends Error {
@@ -133,6 +136,8 @@ export function loadConfig(env: Env = process.env): Config {
     logLevel: level as LogLevel,
     autoStartTransaction: bool('AUTO_START_TRANSACTION', false),
     autoStartDelaySeconds: num('AUTO_START_DELAY_SECONDS', 5, 0),
+    webPort: num('WEB_PORT', 8080, 0, 65535),
+    webHost: str('WEB_HOST', '0.0.0.0'),
   };
 
   if (problems.length > 0) throw new ConfigError(problems);

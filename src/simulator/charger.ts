@@ -443,6 +443,86 @@ export class ChargePoint {
     }
   }
 
+  // ---- Interface (web) --------------------------------------------------
+
+  /** Estado atual para exibicao. */
+  snapshot() {
+    const tx = this.connector.transaction;
+    const charging = !!tx && this.connector.status === 'Charging';
+    const powerKw = charging ? tx.powerKw : 0;
+    return {
+      chargePointId: this.cfg.chargePointId,
+      connected: this.transport.isConnected(),
+      registered: this.registered,
+      connectorId: this.connector.id,
+      status: this.connector.status,
+      transaction: tx
+        ? {
+            transactionId: tx.transactionId,
+            idTag: tx.idTag,
+            startedAt: new Date(tx.startedAtMs).toISOString(),
+            durationSeconds: Math.round((this.clock() - tx.startedAtMs) / 1000),
+            sessionEnergyKwh: tx.sessionEnergyKwh,
+          }
+        : null,
+      electrical: {
+        voltage: charging ? this.cfg.voltage : 0,
+        currentA: charging
+          ? currentAmps(powerKw, this.cfg.voltage, this.cfg.phases, this.cfg.powerFactor)
+          : 0,
+        powerKw,
+        meterWh: this.meter.registerWh,
+      },
+      vehicle: {
+        plugged: this.vehicle.isPluggedIn,
+        socPercent: this.vehicle.socPercent,
+        initialSoc: this.vehicle.initialSoc,
+        targetSoc: this.vehicle.targetSoc,
+        batteryKwh: this.vehicle.battery.capacityKwh,
+      },
+      settings: { maxPowerKw: this.cfg.maxPowerKw, idTag: this.cfg.idTag },
+    };
+  }
+
+  /** Ajusta potencia e SOC em tempo real; lanca RangeError se invalido. */
+  updateSettings(s: { maxPowerKw?: number; initialSoc?: number; targetSoc?: number }): void {
+    const tx = this.connector.transaction;
+    if (s.maxPowerKw !== undefined) {
+      if (!(s.maxPowerKw >= 0.1 && s.maxPowerKw <= 350)) {
+        throw new RangeError('maxPowerKw deve estar entre 0.1 e 350');
+      }
+    }
+    const initial = s.initialSoc ?? this.vehicle.initialSoc;
+    const target = s.targetSoc ?? this.vehicle.targetSoc;
+    if (!(initial >= 0 && initial < 100) || !(target > 0 && target <= 100)) {
+      throw new RangeError('SOC deve estar entre 0 e 100');
+    }
+    if (target <= initial) throw new RangeError('SOC alvo deve ser maior que o SOC inicial');
+    if (tx && s.targetSoc !== undefined && target <= this.vehicle.socPercent) {
+      throw new RangeError('SOC alvo deve ser maior que o SOC atual durante a carga');
+    }
+    if (s.maxPowerKw !== undefined) {
+      this.accumulate(); // fecha o trecho anterior com a potencia antiga
+      this.cfg.maxPowerKw = s.maxPowerKw;
+      if (tx) tx.powerKw = s.maxPowerKw;
+    }
+    this.vehicle.initialSoc = initial;
+    this.vehicle.targetSoc = target;
+    if (!tx && !this.vehicle.isPluggedIn) this.vehicle.battery.reset(initial);
+    this.log.info('Configuracoes alteradas', {
+      maxPowerKw: this.cfg.maxPowerKw,
+      initialSoc: initial,
+      targetSoc: target,
+    });
+  }
+
+  /** Veiculo desconectado pelo usuario: encerra a transacao com EVDisconnected. */
+  async unplugVehicle(): Promise<boolean> {
+    if (!this.connector.transaction) return false;
+    await this.stopTransaction('EVDisconnected');
+    return true;
+  }
+
   // ---- util -------------------------------------------------------------
 
   private track(p: Promise<unknown>): void {

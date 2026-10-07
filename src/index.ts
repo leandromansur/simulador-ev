@@ -3,6 +3,7 @@ import { OcppClient } from './ocpp/client';
 import { createCallHandler } from './ocpp/handlers';
 import { ChargePoint } from './simulator/charger';
 import { Logger } from './utils/logger';
+import { startWebServer } from './web/server';
 
 async function main(): Promise<void> {
   let config;
@@ -39,6 +40,11 @@ async function main(): Promise<void> {
   });
   client.start();
 
+  const webServer =
+    config.webPort > 0
+      ? startWebServer({ port: config.webPort, host: config.webHost, chargePoint, logger, csmsUrl: url })
+      : null;
+
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
@@ -46,6 +52,7 @@ async function main(): Promise<void> {
     logger.info(`${signal} recebido; encerrando`);
     await chargePoint.shutdown();
     client.stop();
+    webServer?.close();
     process.exit(0);
   };
   process.on('SIGTERM', () => void shutdown('SIGTERM'));

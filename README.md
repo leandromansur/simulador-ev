@@ -10,7 +10,7 @@ Simulador de carregador veicular elétrico (**Charge Point**) compatível com **
 Charge Point Simulator ──WebSocket (ocpp1.6)──▶ CSMS / OCPP Server
 ```
 
-Esta versão é **somente o Charge Point**: sem CSMS, banco de dados ou frontend. Toda interação é por variáveis de ambiente, logs e mensagens OCPP.
+Esta versão é **somente o Charge Point** (sem CSMS nem banco de dados), com uma interface web de controle embutida. Toda interação é por variáveis de ambiente, logs e mensagens OCPP.
 
 ## 3. Requisitos
 
@@ -74,6 +74,14 @@ Configuração inválida é erro fatal com mensagem clara. CSMS offline **nunca*
 - Chamadas correlacionadas por `UniqueId` (UUID) com timeout configurável; pendentes são rejeitadas na queda da conexão.
 - Após reconexão: novo `BootNotification`, timers de heartbeat não duplicados.
 
+## Interface web
+
+Abra **http://localhost:8085** (publicada só em `127.0.0.1`, inacessível de outras máquinas). Ela roda dentro do próprio processo do simulador (sem container extra) e mostra: conexão com o CSMS, estado do conector, SOC, potência/tensão/corrente/energia, logs ao vivo. Permite iniciar sessão (Authorize + StartTransaction), parar carga, desconectar o veículo (`EVDisconnected`), Reset Soft/Hard e ajustar potência e SOC inicial/alvo.
+
+- `WEB_PORT` (padrão 8080, `0` desativa) e `WEB_HOST_PORT` (porta no host, padrão 8085).
+- "Iniciar" só fica habilitado com o Charge Point registrado (Boot aceito pelo CSMS).
+- Sem autenticação: não exponha a porta fora do localhost. POSTs exigem o cabeçalho `X-Simulator: 1`.
+
 ## 9. Build e testes
 
 ```bash
@@ -98,7 +106,7 @@ docker compose down          # para e remove SOMENTE este projeto
 docker compose -f C:\Projetos\simulador-ev\docker-compose.yml down
 ```
 
-Recursos criados: container `inovative-simulador-ev-ocpp16`, imagem `inovative-simulador-ev-ocpp16:0.1.0`, network `inovative-simulador-ev-net`. Sem volumes e sem portas publicadas. **Nunca** use `docker system prune` ou equivalentes globais.
+Recursos criados: container `inovative-simulador-ev-ocpp16`, imagem `inovative-simulador-ev-ocpp16:0.1.0`, network `inovative-simulador-ev-net`. Sem volumes; única porta publicada: `127.0.0.1:8085` (interface web). **Nunca** use `docker system prune` ou equivalentes globais.
 
 ## 14–15. Conexão com o CSMS
 
@@ -154,7 +162,7 @@ Somente AC e um conector; potência constante (sem curva de carga); sem Smart Ch
 
 ## 22. Roadmap
 
-- **v0.2** painel web; conectar/desconectar veículo; iniciar/parar manualmente; alterar SOC/potência; simulação de falhas
+- **v0.2** ~~painel web, conectar/desconectar, iniciar/parar, alterar SOC/potência~~ (feito); simulação de falhas
 - **v0.3** múltiplos conectores e Charge Points; perfis de carregador
 - **v0.4** Smart Charging (SetChargingProfile, ClearChargingProfile, GetCompositeSchedule)
 - **v0.5** cenários automatizados; carga de testes com dezenas/centenas de Charge Points virtuais

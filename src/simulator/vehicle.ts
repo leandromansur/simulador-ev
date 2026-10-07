@@ -8,8 +8,8 @@ export class Vehicle {
 
   constructor(
     capacityKwh: number,
-    public readonly initialSoc: number,
-    public readonly targetSoc: number,
+    public initialSoc: number,
+    public targetSoc: number,
   ) {
     if (targetSoc <= initialSoc) {
       throw new RangeError(`targetSoc (${targetSoc}) deve ser maior que initialSoc (${initialSoc})`);

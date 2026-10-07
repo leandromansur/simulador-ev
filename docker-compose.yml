@@ -15,6 +15,9 @@ services:
     # Permite host.docker.internal tambem em Docker Engine/Linux (no Docker Desktop ja existe)
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Interface web, acessivel apenas neste PC: http://localhost:8085
+    ports:
+      - "127.0.0.1:${WEB_HOST_PORT:-8085}:8080"
     networks:
       - simulador-ev-net
 

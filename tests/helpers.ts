@@ -30,6 +30,8 @@ export function testConfig(over: Partial<Config> = {}): Config {
     logLevel: 'error',
     autoStartTransaction: false,
     autoStartDelaySeconds: 5,
+    webPort: 0,
+    webHost: '127.0.0.1',
     ...over,
   };
 }

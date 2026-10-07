@@ -27,7 +27,11 @@ const defaultSink: Sink = (line, level) => {
   (level === 'error' ? console.error : console.log)(line);
 };
 
+const BUFFER_SIZE = 300;
+
 export class Logger {
+  private readonly buffer: string[] = [];
+
   constructor(
     private readonly chargePointId: string,
     private level: LogLevel = 'info',
@@ -38,11 +42,18 @@ export class Logger {
     this.level = level;
   }
 
+  /** Ultimas linhas emitidas (para a interface web). */
+  recent(limit = 100): string[] {
+    return this.buffer.slice(-limit);
+  }
+
   private write(level: LogLevel, message: string, meta?: unknown): void {
     if (ORDER[level] < ORDER[this.level]) return;
     const ts = new Date().toISOString();
     let line = `[${ts}] [${this.chargePointId}] ${level.toUpperCase().padEnd(5)} ${message}`;
     if (meta !== undefined) line += ` ${JSON.stringify(redact(meta))}`;
+    this.buffer.push(line);
+    if (this.buffer.length > BUFFER_SIZE) this.buffer.shift();
     this.sink(line, level);
   }
 
