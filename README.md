@@ -82,6 +82,20 @@ Abra **http://localhost:8085** (publicada só em `127.0.0.1`, inacessível de ou
 - "Iniciar" só fica habilitado com o Charge Point registrado (Boot aceito pelo CSMS).
 - Sem autenticação: não exponha a porta fora do localhost. POSTs exigem o cabeçalho `X-Simulator: 1`.
 
+## CSMS de teste (descartável)
+
+Enquanto o CSMS real não está pronto, use `tools/mock-csms.js` (roda no host, **fora** do Docker e da imagem):
+
+```bash
+cd C:\Projetos\simulador-ev
+node tools/mock-csms.js
+```
+
+- OCPP em `ws://0.0.0.0:9000/ocpp/<id>` (aceita qualquer Charge Point; o simulador alcança via `host.docker.internal`). O Windows pode pedir permissão de firewall.
+- Painel em **http://localhost:9001** (só localhost): RemoteStart, RemoteStop, Reset, medições e logs.
+- Aceita qualquer `idTag`, exceto `INVALID` (para testar recusa). Não persiste nada. Variáveis opcionais: `PORT`, `PANEL_PORT`, `HEARTBEAT_INTERVAL`.
+- Para parar: encerre o processo `node` (Ctrl+C no terminal).
+
 ## 9. Build e testes
 
 ```bash

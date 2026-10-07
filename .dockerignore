@@ -10,3 +10,4 @@ tests
 *.md
 Dockerfile
 docker-compose.yml
+tools
